@@ -1,109 +1,181 @@
 #include <iostream>
-#include <vector>
-
 using namespace std;
 
-#define MIN_DEGREE 3
+class BTreeNode {
+    int *keys;       // Array of keys
+    int t;           // Minimum degree (defines the range for number of keys)
+    BTreeNode **C;   // Array of child pointers
+    int n;           // Current number of keys
+    bool leaf;       // True when node is leaf
 
-// BPlusTreeNode Structure
-struct BPlusTreeNode {
-    vector<int> keys;
-    vector<BPlusTreeNode*> children;
-    BPlusTreeNode* next;  // For linked list of leaf nodes
-    bool leaf;
+public:
+    BTreeNode(int _t, bool _leaf); // Constructor
 
-    BPlusTreeNode(bool isLeaf);
-    void insertNonFull(int key, int minDegree);
-    void splitChild(int i, BPlusTreeNode* y, int minDegree);
+    void traverse();               // Traverse all nodes
+    BTreeNode *search(int k);      // Search key in subtree
+
+    void insertNonFull(int k);
+    void splitChild(int i, BTreeNode *y);
+
+    friend class BTree;
 };
 
-// BPlusTree Structure
-struct BPlusTree {
-    BPlusTreeNode* root;
+class BTree {
+    BTreeNode *root;
+    int t;
 
-    BPlusTree();
-    void insert(int key, int minDegree);
-    void traverse(BPlusTreeNode* node);
+public:
+    BTree(int _t) {
+        root = nullptr;
+        t = _t;
+    }
+
+    void traverse() {
+        if (root != nullptr)
+            root->traverse();
+    }
+
+    BTreeNode *search(int k) {
+        return (root == nullptr) ? nullptr : root->search(k);
+    }
+
+    void insert(int k);
 };
 
-BPlusTreeNode::BPlusTreeNode(bool isLeaf) {
-    leaf = isLeaf;
-    next = nullptr;
+// Constructor
+BTreeNode::BTreeNode(int t1, bool leaf1) {
+    t = t1;
+    leaf = leaf1;
+    keys = new int[2 * t - 1];
+    C = new BTreeNode *[2 * t];
+    n = 0;
 }
 
-void BPlusTreeNode::insertNonFull(int key, int minDegree) {
-    int i = keys.size() - 1;
+// Traverse the tree
+void BTreeNode::traverse() {
+    int i;
+    for (i = 0; i < n; i++) {
+        if (!leaf)
+            C[i]->traverse();
+        cout << " " << keys[i];
+    }
 
-    if (leaf) {
-        while (i >= 0 && keys[i] > key) i--;
-        keys.insert(keys.begin() + i + 1, key);
-    } else {
-        while (i >= 0 && keys[i] > key) i--;
+    if (!leaf)
+        C[i]->traverse();
+}
+
+// Search key in the subtree
+BTreeNode *BTreeNode::search(int k) {
+    int i = 0;
+    while (i < n && k > keys[i])
         i++;
 
-        if (children[i]->keys.size() == 2 * minDegree - 1) {
-            splitChild(i, children[i], minDegree);
-            if (keys[i] < key) i++;
+    if (keys[i] == k)
+        return this;
+
+    if (leaf)
+        return nullptr;
+
+    return C[i]->search(k);
+}
+
+// Insert key in non-full node
+void BTreeNode::insertNonFull(int k) {
+    int i = n - 1;
+
+    if (leaf) {
+        while (i >= 0 && keys[i] > k) {
+            keys[i + 1] = keys[i];
+            i--;
         }
-        children[i]->insertNonFull(key, minDegree);
+
+        keys[i + 1] = k;
+        n++;
+    } else {
+        while (i >= 0 && keys[i] > k)
+            i--;
+
+        if (C[i + 1]->n == 2 * t - 1) {
+            splitChild(i + 1, C[i + 1]);
+
+            if (keys[i + 1] < k)
+                i++;
+        }
+
+        C[i + 1]->insertNonFull(k);
     }
 }
 
-void BPlusTreeNode::splitChild(int i, BPlusTreeNode* y, int minDegree) {
-    BPlusTreeNode* z = new BPlusTreeNode(y->leaf);
-    int mid = minDegree - 1;
+// Split the child y of this node
+void BTreeNode::splitChild(int i, BTreeNode *y) {
+    BTreeNode *z = new BTreeNode(y->t, y->leaf);
+    z->n = t - 1;
 
-    z->keys.assign(y->keys.begin() + mid, y->keys.end());
-    if (!y->leaf) z->children.assign(y->children.begin() + mid, y->children.end());
+    for (int j = 0; j < t - 1; j++)
+        z->keys[j] = y->keys[j + t];
 
-    keys.insert(keys.begin() + i, y->keys[mid]);
-    children.insert(children.begin() + i + 1, z);
-
-    y->keys.resize(mid);
-    y->children.resize(minDegree);
-}
-
-BPlusTree::BPlusTree() {
-    root = new BPlusTreeNode(true);
-}
-
-void BPlusTree::insert(int key, int minDegree) {
-    if (root->keys.size() == 2 * minDegree - 1) {
-        BPlusTreeNode* s = new BPlusTreeNode(false);
-        s->children.push_back(root);
-        s->splitChild(0, root, minDegree);
-        root = s;
+    if (!y->leaf) {
+        for (int j = 0; j < t; j++)
+            z->C[j] = y->C[j + t];
     }
-    root->insertNonFull(key, minDegree);
+
+    y->n = t - 1;
+
+    for (int j = n; j >= i + 1; j--)
+        C[j + 1] = C[j];
+
+    C[i + 1] = z;
+
+    for (int j = n - 1; j >= i; j--)
+        keys[j + 1] = keys[j];
+
+    keys[i] = y->keys[t - 1];
+    n++;
 }
 
-void BPlusTree::traverse(BPlusTreeNode* node) {
-    if (node != nullptr) {
-        for (int key : node->keys) cout << key << " ";
-        if (node->leaf) {
-            cout << " | ";  // Indicating end of leaf level
-            if (node->next) traverse(node->next);  // Follow linked list of leaves
+// Insert key in tree
+void BTree::insert(int k) {
+    if (root == nullptr) {
+        root = new BTreeNode(t, true);
+        root->keys[0] = k;
+        root->n = 1;
+    } else {
+        if (root->n == 2 * t - 1) {
+            BTreeNode *s = new BTreeNode(t, false);
+            s->C[0] = root;
+            s->splitChild(0, root);
+
+            int i = 0;
+            if (s->keys[0] < k)
+                i++;
+
+            s->C[i]->insertNonFull(k);
+            root = s;
         } else {
-            for (BPlusTreeNode* child : node->children) traverse(child);
+            root->insertNonFull(k);
         }
     }
 }
 
+// -------- Main function ----------
 int main() {
-    BPlusTree tree;
+    BTree t(3); // A B-Tree with min degree 3
 
-    tree.insert(10, MIN_DEGREE);
-    tree.insert(20, MIN_DEGREE);
-    tree.insert(5, MIN_DEGREE);
-    tree.insert(6, MIN_DEGREE);
-    tree.insert(12, MIN_DEGREE);
-    tree.insert(30, MIN_DEGREE);
-    tree.insert(7, MIN_DEGREE);
-    tree.insert(17, MIN_DEGREE);
+    t.insert(10);
+    t.insert(20);
+    t.insert(5);
+    t.insert(6);
+    t.insert(12);
+    t.insert(30);
+    t.insert(7);
+    t.insert(17);
 
-    cout << "B+ Tree traversal (Leaf nodes linked): ";
-    tree.traverse(tree.root);
-    cout << endl;
+    cout << "Traversal of the constructed B-tree is:\n";
+    t.traverse();
+
+    int key = 6;
+    (t.search(key) != nullptr) ? cout << "\n\nFound " << key
+                               : cout << "\n\nNot Found " << key;
 
     return 0;
 }
