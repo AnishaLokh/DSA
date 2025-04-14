@@ -1,120 +1,160 @@
 #include <iostream>
 #include <vector>
-
+#include <algorithm>
 using namespace std;
 
-#define MIN_DEGREE 3
+const int ORDER = 3; // Max keys in a node = ORDER - 1
 
-// Node structure for B+ Tree
-struct BPlusTreeNode {
-    vector<int> keys;               // Store keys in the node
-    vector<BPlusTreeNode*> children; // Pointers to child nodes
-    BPlusTreeNode* next;            // For linked list of leaf nodes
-    bool leaf;                      // Flag to check if it's a leaf node
+class BPTreeNode {
+public:
+    bool isLeaf;
+    vector<int> keys;
+    vector<BPTreeNode*> children;
+    BPTreeNode* next; // for leaf node linkage
+
+    BPTreeNode(bool leaf) {
+        isLeaf = leaf;
+        next = nullptr;
+    }
 };
 
-// Function to create a new B+ Tree Node
-BPlusTreeNode* createNode(bool isLeaf) {
-    BPlusTreeNode* newNode = new BPlusTreeNode();
-    newNode->leaf = isLeaf;
-    newNode->next = nullptr;
-    return newNode;
-}
+class BPTree {
+    BPTreeNode* root;
 
-// Function to insert a key into a non-full node
-void insertNonFull(BPlusTreeNode* node, int key, int minDegree);
-
-// Function to split a child node when it's full
-void splitChild(BPlusTreeNode* parent, int i, BPlusTreeNode* fullChild);
-
-// Function to traverse the B+ Tree
-void traverse(BPlusTreeNode* node);
-
-// Insertion function for B+ Tree
-void insert(BPlusTreeNode*& root, int key) {
-    // If the root is full, split it
-    if (root->keys.size() == 2 * MIN_DEGREE - 1) {
-        BPlusTreeNode* newRoot = createNode(false);
-        newRoot->children.push_back(root);  // Old root becomes the first child
-        splitChild(newRoot, 0, root);       // Split the old root
-        root = newRoot;                     // New root becomes the updated root
+public:
+    BPTree() {
+        root = new BPTreeNode(true);
     }
-    insertNonFull(root, key, MIN_DEGREE);
+
+    void insert(int key);
+    void display();
+
+private:
+    void insertInternal(int key, BPTreeNode* cursor, BPTreeNode* child);
+    void displayLeafNodes();
+};
+
+// Traverse all leaf nodes (for B+ Tree)
+void BPTree::display() {
+    cout << "Leaf Nodes: ";
+    displayLeafNodes();
+    cout << endl;
 }
 
-// Function to insert a key into a non-full node
-void insertNonFull(BPlusTreeNode* node, int key, int minDegree) {
-    int i = node->keys.size() - 1;
+void BPTree::displayLeafNodes() {
+    BPTreeNode* cursor = root;
+    while (!cursor->isLeaf)
+        cursor = cursor->children[0];
 
-    if (node->leaf) {
-        // Find the position to insert the key in the leaf node
-        while (i >= 0 && node->keys[i] > key) i--;
-        node->keys.insert(node->keys.begin() + i + 1, key);
+    while (cursor != nullptr) {
+        for (int key : cursor->keys)
+            cout << key << " ";
+        cursor = cursor->next;
+    }
+}
+
+// Insert a key
+void BPTree::insert(int key) {
+    BPTreeNode* cursor = root;
+
+    // Traverse to leaf
+    while (!cursor->isLeaf) {
+        int i = 0;
+        while (i < cursor->keys.size() && key >= cursor->keys[i])
+            i++;
+        cursor = cursor->children[i];
+    }
+
+    // Insert key in leaf
+    cursor->keys.push_back(key);
+    sort(cursor->keys.begin(), cursor->keys.end());
+
+    // Split if overflow
+    if (cursor->keys.size() < ORDER)
+        return;
+
+    BPTreeNode* newLeaf = new BPTreeNode(true);
+    int mid = (ORDER + 1) / 2;
+
+    newLeaf->keys.assign(cursor->keys.begin() + mid, cursor->keys.end());
+    cursor->keys.resize(mid);
+
+    newLeaf->next = cursor->next;
+    cursor->next = newLeaf;
+
+    // Insert into parent
+    if (cursor == root) {
+        root = new BPTreeNode(false);
+        root->keys.push_back(newLeaf->keys[0]);
+        root->children.push_back(cursor);
+        root->children.push_back(newLeaf);
     } else {
-        // Find the child where the key should go
-        while (i >= 0 && node->keys[i] > key) i--;
-        i++;
-
-        // If the child is full, split it
-        if (node->children[i]->keys.size() == 2 * minDegree - 1) {
-            splitChild(node, i, node->children[i]);
-            if (node->keys[i] < key) i++;
-        }
-
-        // Recur for the child
-        insertNonFull(node->children[i], key, minDegree);
+        insertInternal(newLeaf->keys[0], root, newLeaf);
     }
 }
 
-// Function to split a full child node
-void splitChild(BPlusTreeNode* parent, int i, BPlusTreeNode* fullChild) {
-    BPlusTreeNode* newNode = createNode(fullChild->leaf);
-    int mid = MIN_DEGREE - 1;
+// Insert key into internal nodes
+void BPTree::insertInternal(int key, BPTreeNode* cursor, BPTreeNode* child) {
+    // If current is leaf level, root must be updated already
+    if (cursor->isLeaf)
+        return;
 
-    // Move half of the keys and children to the new node
-    newNode->keys.assign(fullChild->keys.begin() + mid, fullChild->keys.end());
-    if (!fullChild->leaf) {
-        newNode->children.assign(fullChild->children.begin() + mid, fullChild->children.end());
+    // Traverse to internal node just above leaf
+    BPTreeNode* parent = nullptr;
+    vector<BPTreeNode*> path;
+    BPTreeNode* temp = cursor;
+
+    while (!temp->isLeaf) {
+        path.push_back(temp);
+        int i = 0;
+        while (i < temp->keys.size() && key >= temp->keys[i])
+            i++;
+        parent = temp;
+        temp = temp->children[i];
     }
 
-    // Insert the middle key into the parent node
-    parent->keys.insert(parent->keys.begin() + i, fullChild->keys[mid]);
-    parent->children.insert(parent->children.begin() + i + 1, newNode);
+    int pos = 0;
+    while (pos < parent->keys.size() && key >= parent->keys[pos])
+        pos++;
 
-    // Remove the middle key from the full child
-    fullChild->keys.resize(mid);
-    fullChild->children.resize(MIN_DEGREE);
-}
+    parent->keys.insert(parent->keys.begin() + pos, key);
+    parent->children.insert(parent->children.begin() + pos + 1, child);
 
-// Function to traverse and print the B+ Tree (leaf nodes linked)
-void traverse(BPlusTreeNode* node) {
-    if (node != nullptr) {
-        for (int key : node->keys) cout << key << " ";
-        if (node->leaf) {
-            cout << "| ";  // Indicating the leaf level
-            if (node->next) traverse(node->next);  // Traverse through linked leaf nodes
+    // Split internal if needed
+    if (parent->keys.size() >= ORDER) {
+        BPTreeNode* newInternal = new BPTreeNode(false);
+        int mid = ORDER / 2;
+
+        int upKey = parent->keys[mid];
+
+        newInternal->keys.assign(parent->keys.begin() + mid + 1, parent->keys.end());
+        newInternal->children.assign(parent->children.begin() + mid + 1, parent->children.end());
+
+        parent->keys.resize(mid);
+        parent->children.resize(mid + 1);
+
+        if (parent == root) {
+            root = new BPTreeNode(false);
+            root->keys.push_back(upKey);
+            root->children.push_back(parent);
+            root->children.push_back(newInternal);
         } else {
-            for (BPlusTreeNode* child : node->children) traverse(child);
+            insertInternal(upKey, root, newInternal);
         }
     }
 }
 
 int main() {
-    BPlusTreeNode* root = createNode(true);
+    BPTree tree;
 
-    // Insert elements into the B+ Tree
-    insert(root, 10);
-    insert(root, 20);
-    insert(root, 5);
-    insert(root, 6);
-    insert(root, 12);
-    insert(root, 30);
-    insert(root, 7);
-    insert(root, 17);
+    tree.insert(5);
+    tree.insert(15);
+    tree.insert(25);
+    tree.insert(35);
+    tree.insert(45);
+    tree.insert(55);
 
-    cout << "B+ Tree traversal (Leaf nodes linked): ";
-    traverse(root);
-    cout << endl;
+    tree.display();
 
     return 0;
 }
