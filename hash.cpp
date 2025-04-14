@@ -1,80 +1,54 @@
-#include<iostream>
+#include <iostream>
+#include <cmath>
 using namespace std;
 
-const int TABLE_SIZE=10;
+#define MAX 100
 
 struct Entry {
     string name;
-    string phone;
-    bool isOccupied;
+    long number;
+    bool isFilled = false;
 };
 
-Entry hashTable[TABLE_SIZE];
+int main() {
+    Entry hashtable[MAX] = {}; // Initialize the hash table
+    int n;
 
-int hashFunction(string name)
-{
-    int sum=0;
-    for(char c : name)
-    {
-        sum+=c;
-    }
-    return sum % TABLE_SIZE;
-}
-void insert(string name,string phone)
-{
-    int index = hashFunction(name);
-    
-    //LinearProbing if collosion happens
-    while(hashTable[index].isOccupied)
-    {
-        index=(index+1)%TABLE_SIZE;
+    cout << "Enter number of entries in telephone directory: ";
+    cin >> n;
+
+    string names[n];
+    long numbers[n];
+
+    cout << "Enter the name and number:\n";
+    for (int i = 0; i < n; i++) {
+        cout << i + 1 << ": ";
+        cin >> names[i] >> numbers[i];
     }
 
-    hashTable[index].name = name;
-    hashTable[index].phone = phone;
-    hashTable[index].isOccupied=true;
+    // Multiplicative Hash Function
+    const float A = 0.618033; // Recommended value (golden ratio)
+    for (int i = 0; i < n; i++) {
+        float temp = numbers[i] * A;
+        int index = floor(MAX * (temp - floor(temp)));
 
-    cout<<"Inserted : "<<name<<"->"<<phone<<endl;
-}
-void search(string name)
-{
-    int index=hashFunction(name);
-    int startIndex= index;
-
-    while(hashTable[index].isOccupied)
-    {
-        if(hashTable[index].name==name)
-        {
-            cout<<"Found:"<<name<<"->"<<hashTable[index].phone<<endl;
-            return;
+        // Linear probing in case of collision
+        while (hashtable[index].isFilled) {
+            index = (index + 1) % MAX;
         }
-        index=(index+1)%TABLE_SIZE;
-        if(index==startIndex) break;
+
+        hashtable[index].name = names[i];
+        hashtable[index].number = numbers[i];
+        hashtable[index].isFilled = true;
     }
-    cout<<"Not found\n";
-}
-void display()
-{
-    cout<<"\n Telephone Directory:\n";
-    for(int i=0;i<TABLE_SIZE;i++)
-    {
-        if(hashTable[i].isOccupied){
-            cout<<i<<":"<<hashTable[i].name<<"->"<<hashTable[i].phone<<endl;
-        }else
-        {
-            cout<<i<<":Empty\n";
+
+    cout << "\n\n-----------------------HASH TABLE---------------------------\n";
+    cout << "LOC\tNUMBER\t\tNAME\n";
+    for (int i = 0; i < MAX; i++) {
+        if (hashtable[i].isFilled) {
+            cout << i << "\t" << hashtable[i].number << "\t" << hashtable[i].name << endl;
         }
     }
-}
-int main()
-{
-    insert("Akshad","1234");
-    insert("Anisha","1234");
-    insert("vansh","1234");
-    display();
-    search("Anisha");
-    search("Akshad"); // Not present
 
-    // Show all entries
-    display();
+    return 0;
 }
